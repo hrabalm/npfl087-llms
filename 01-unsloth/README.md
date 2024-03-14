@@ -57,9 +57,9 @@ import unsloth
 
 ### Jupyter
 
-Modify environment variables in the attached shell script. Especially the path to the conda environment and your home directory.
+Modify environment variables in the attached shell script. Most importantly the path to the mamba executable, the conda environment and your home directory.
 
-You can run it with
+You can then run it with
 
 ```bash
 qsub JupyterLabConda_Job.sh
