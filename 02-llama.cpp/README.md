@@ -51,22 +51,38 @@ qsub -q gpu -l select=1:ncpus=1:ngpus=1:mem=8gb:scratch_local=16gb:cl_adan=True 
 
 ```python
 from llama_cpp import Llama
-llm = Llama("/storage/praha1/home/hrabalm/models/mistral-7b-v0.1.Q4_K_M.gguf", n_gpu_layers=-1)
+llm = Llama("/storage/praha1/home/hrabalm/models/mistral-7b-v0.1.Q4_K_M.gguf", n_gpu_layers=-1, n_ctx=4096)
 ```
 
 ## Translation
+
+```python
+prompt = 'English: I am sorry to hear that.\nCzech: To je mi líto.</s>\n\nEnglish: How much does it cost?\nCzech: Kolik to stojí?</s>\n\nEnglish: Prague is the capital of the Czech Republic.\nCzech: Praha je hlavní město České republiky.</s>\n\nEnglish: Pay attention to the road.\nCzech: Dávej pozor na silnici.</s>\n\nEnglish: I have a headache.\nCzech: Bolí mě hlava.</s>\n\nEnglish: How do you say this in Czech?\nCzech:"
+print(prompt)
+```
+
+### Simple prompt
+
+```python
+print(llm(prompt, max_tokens=256))
+```
+
+### Stop tokens
+
+```python
+print(llm(prompt, max_tokens=256, stop=["\n"]))
+```
 
 ## Other things to consider
 
 ### Batched inference
 
-Implemented in llama.cpp, author of `llama-cpp-python` claims he's been working on porting it for a while:
+Implemented in llama.cpp, the author of `llama-cpp-python` claims he's been working on porting it for a while:
 
-TODO: ADD GitHub issue reference
+[https://github.com/abetlen/llama-cpp-python/issues/771](https://github.com/abetlen/llama-cpp-python/issues/771)
+[https://github.com/abetlen/llama-cpp-python/pull/951](https://github.com/abetlen/llama-cpp-python/pull/951)
 
 I am planning on creating a small benchmark to see if the performance gain is noticeable.
-
-### Stop tokens
 
 ### Speculative decoding
 
