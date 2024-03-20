@@ -27,6 +27,13 @@ def apply_prompt_n_shot(examples, n: int, eos_token: str, **kwargs):
         + [apply_prompt(**kwargs)]
     )
 
+def partition_all(count, iterable):
+    batch = []
+    for item in iterable:
+        batch.append(item)
+        if len(batch) == count:
+            yield batch
+            batch = []
 
 EXAMPLE_SENTENCES = [
     {
@@ -89,7 +96,7 @@ class EosListStoppingCriteria(StoppingCriteria):
 
 
 def translate(
-    model, tokenizer, source_lang, target_lang, source_texts: list[str], n_shot: int = 0
+    model, tokenizer, source_lang, target_lang, source_texts: list[str], n_shot: int = 0, batch_size: int = 1
 ):
     prompts = [
         apply_prompt_n_shot(
@@ -102,21 +109,28 @@ def translate(
         )
         for source_text in source_texts
     ]
+    prompts_tokenized = [tokenizer(prompt, return_tensors="pt") for prompt in prompts]
 
-    translations = []
-    for prompt in tqdm(prompts):
-        inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
-        outputs = model.generate(
-            **inputs,
-            max_new_tokens=256,
-            use_cache=True,
-            stopping_criteria=[EosListStoppingCriteria()]
-        )
-        decoded = tokenizer.decode(
-            outputs[0][inputs.input_ids.shape[1] :], skip_special_tokens=True
-        ).strip()
-        translations.append(decoded)
+    prompts_tokenized_reordered = [(len(prompt), idx, prompt) for idx, prompt in enumerate(prompts_tokenized)]
 
+    translations_by_idx = {}
+    for batch in tqdm(partition_all(batch_size, prompts_tokenized_reordered)):
+        for _, idx, prompt in batch:
+            # TODO: actual batching - either we have to take care of
+            # padding by ourselves or we use the tokenizer again?
+            inputs = prompt.to("cuda")
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=256,
+                use_cache=True,
+                stopping_criteria=[EosListStoppingCriteria()]
+            )
+            decoded = tokenizer.decode(
+                outputs[0][inputs.input_ids.shape[1] :], skip_special_tokens=True
+            ).strip()
+            translations_by_idx[idx] = decoded
+
+    translations = [translation for _, translation in sorted(list(translations_by_idx.items()))]
     return translations
 
 
