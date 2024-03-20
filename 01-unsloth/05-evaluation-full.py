@@ -109,12 +109,24 @@ def translate(
         )
         for source_text in source_texts
     ]
-    prompts_tokenized = [tokenizer(prompt, return_tensors="pt") for prompt in prompts]
 
-    prompts_tokenized_reordered = [(len(prompt), idx, prompt) for idx, prompt in enumerate(prompts_tokenized)]
+    prompts_tokenized_reordered = [(len(tokenizer(prompt, return_tensors="pt")), idx, prompt) for idx, prompt in enumerate(prompts)]
 
     translations_by_idx = {}
     for batch in tqdm(partition_all(batch_size, prompts_tokenized_reordered)):
+        # maybe we could just try hf pipeline again and rewrite stopping criteria
+        # so that it stops when all sequences are finished
+        # we then have to cut extra characters from the end by ourselves
+
+        # TODO: stopping criteria needs to be changed probably:
+        # see this: https://discuss.huggingface.co/t/stopping-criteria-for-batch/26564/7
+        inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=False).to("cuda")
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=256,
+            use_cache=True,
+            stopping_criteria=[EosListStoppingCriteria()]
+        )
         for _, idx, prompt in batch:
             # TODO: actual batching - either we have to take care of
             # padding by ourselves or we use the tokenizer again?
