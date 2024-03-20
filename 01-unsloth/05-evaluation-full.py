@@ -5,6 +5,7 @@ import torch
 from sacrebleu.metrics.bleu import BLEU
 import json
 from typing import TypedDict, Any
+from tqdm import tqdm
 
 results_path = Path(__file__).with_suffix(".json")
 
@@ -103,7 +104,7 @@ def translate(
     ]
 
     translations = []
-    for prompt in prompts:
+    for prompt in tqdm(prompts):
         inputs = tokenizer(prompt, return_tensors="pt").to("cuda")
         outputs = model.generate(
             **inputs,
@@ -137,7 +138,7 @@ def evaluate(model, tokenizer, n_shot: int = 0):
 def mistral_16b_factory():
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    model = AutoModelForCausalLM.from_pretrained("mistralai/Mistral-7B-v0.1")
+    model = AutoModelForCausalLM.from_pretrained("mistralai/Mistral-7B-v0.1", low_cpu_mem_usage=True, device_map="auto", torch_dtype=torch.float16)
     tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-v0.1")
     return model, tokenizer
 

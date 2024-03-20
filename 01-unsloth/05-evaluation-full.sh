@@ -1,7 +1,7 @@
 #!/bin/bash
 #PBS -N llm_demo_evaluation_full
 #PBS -q gpu
-#PBS -l select=1:ncpus=1:mem=8gb:scratch_local=16gb:ngpus=1:cl_adan=True
+#PBS -l select=1:ncpus=1:mem=16gb:scratch_local=16gb:ngpus=1:gpu_cap=cuda70:cl_adan=True
 #PBS -l walltime=24:00:00
 #PBS -m ae
 
