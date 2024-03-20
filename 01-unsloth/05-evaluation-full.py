@@ -1,10 +1,10 @@
+import json
 from pathlib import Path
+from typing import Any, TypedDict
 
 import sacrebleu.utils
 import torch
 from sacrebleu.metrics.bleu import BLEU
-import json
-from typing import TypedDict, Any
 from tqdm import tqdm
 
 results_path = Path(__file__).with_suffix(".json")
@@ -132,19 +132,33 @@ def evaluate(model, tokenizer, n_shot: int = 0):
         target_lang=target_lang,
         source_text="An example sentence.",
     )
-    return BLEU().corpus_score(translations, [references]), example_prompt, sources, translations
+    return (
+        BLEU().corpus_score(translations, [references]),
+        example_prompt,
+        sources,
+        translations,
+    )
 
 
 def mistral_16b_factory():
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    model = AutoModelForCausalLM.from_pretrained("mistralai/Mistral-7B-v0.1", low_cpu_mem_usage=True, device_map="auto", torch_dtype=torch.float16)
+    # note: we use low_cpu_mem_usage to avoid OOM errors, this
+    # means that a part of the model is possibly offloaded to CPU
+    # using hf's accelerate
+    model = AutoModelForCausalLM.from_pretrained(
+        "mistralai/Mistral-7B-v0.1",
+        low_cpu_mem_usage=True,
+        device_map="auto",
+        torch_dtype=torch.float16,
+    )
     tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-v0.1")
     return model, tokenizer
 
 
 def mistral_bnb_4bit():
     from unsloth import FastLanguageModel
+
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name="unsloth/mistral-7b-bnb-4bit",
         max_seq_length=4096,
@@ -156,6 +170,7 @@ def mistral_bnb_4bit():
 
 def mistral_trained_small():
     from unsloth import FastLanguageModel
+
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name="./outputs/mistral-ft-qlora",
         max_seq_length=4096,
@@ -216,7 +231,9 @@ for model_name, model_factory in model_factories:
     if not is_already_evaluated(model_name):
         model, tokenizer = model_factory()
         for n_shot in [0, 5]:
-            bleu, prompt_example, sources, translations = evaluate(model, tokenizer, n_shot=n_shot)
+            bleu, prompt_example, sources, translations = evaluate(
+                model, tokenizer, n_shot=n_shot
+            )
             add_result(
                 Result(
                     model=model_name,
