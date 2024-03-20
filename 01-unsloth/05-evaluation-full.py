@@ -114,14 +114,13 @@ def filter_outputs(outputs, eos_sequence):
     length = eos_sequence.shape[0]
     results = []
     for sequence in outputs:
-        for idx in range(0, len(sequence) - length + 1):
-            # print(sequence[idx : idx + length], eos_sequence)
-            if torch.equal(sequence[idx : idx + length], eos_sequence):
-                print(sequence[: idx + length])
-                print(sequence[: idx])
-                results.append(sequence[: idx + length])
-                break
-        outputs.append(sequence)
+        def find():
+            """Find the first occurence of eos_sequence in the sequence. Otherwise return the whole sequence."""
+            for idx in range(0, len(sequence) - length + 1):
+                if torch.equal(sequence[idx : idx + length], eos_sequence):
+                    return sequence[: idx]
+            return sequence
+        results.append(find())
     return results
 
 
@@ -159,6 +158,7 @@ def translate(
             padding=True,
             truncation=False,
         ).to("cuda")
+        # print(tokenizer.batch_decode(inputs.input_ids, skip_special_tokens=False))
         outputs = model.generate(
             **inputs,
             max_new_tokens=256,
@@ -167,20 +167,23 @@ def translate(
             pad_token_id=tokenizer.pad_token_id,
         )
 
-        print(outputs)
+        # print(outputs.shape, outputs)
+        # print(tokenizer.batch_decode(outputs, skip_special_tokens=False))
 
         # Remove leading prompts
         outputs = [output[inputs.input_ids.shape[1] :] for output in outputs]
 
-        print(outputs)
+        # print(tokenizer.batch_decode(outputs, skip_special_tokens=False))
 
         # Remove tokens after stopping criteria
-        outputs = filter_outputs(outputs, tokenizer.eos_token_id)
+        outputs = filter_outputs(outputs, [13])
 
-        print(outputs)
+        # print(tokenizer.batch_decode(outputs, skip_special_tokens=False))
 
         decoded = [tokenizer.decode(output, skip_special_tokens=True).strip() for output in outputs]
+        # print(decoded)
         for translation, (_length, idx, _prompt) in zip(decoded, batch):
+            print(idx, translation)
             translations_by_idx[idx] = translation
 
         # for _, idx, prompt in batch:
@@ -203,22 +206,25 @@ def translate(
         #     tqdm.write(f"\"{decoded}\"")
 
     translations = [translation for _, translation in sorted(list(translations_by_idx.items()))]
-    print(translations)
+    for source, translation in zip(sources, translations):
+        print(f'"{source}"')
+        print(f'"{translation}"')
+        print()
     return translations
 
 
 def evaluate(model, tokenizer, n_shot: int = 0):
     # TODO: remove this, only for mini benchmark purposes
     global sources, references
-    sources = sources[:10]
-    references = references[:10]
+    sources = sources[:100]
+    references = references[:100]
 
     # translations = translate(
     #     model, tokenizer, source_lang, target_lang, sources, n_shot=n_shot
     # )
 
     translations = translate(
-        model, tokenizer, source_lang, target_lang, sources, n_shot=n_shot, batch_size=10
+        model, tokenizer, source_lang, target_lang, sources, n_shot=n_shot, batch_size=4,
     )
 
     example_prompt = apply_prompt_n_shot(
@@ -331,16 +337,16 @@ for model_name, model_factory in model_factories:
             bleu, prompt_example, sources, translations = evaluate(
                 model, tokenizer, n_shot=n_shot
             )
-            add_result(
-                Result(
-                    model=model_name,
-                    n_shot=n_shot,
-                    prompt_example=prompt_example,
-                    bleu=bleu.score,
-                    bleu_components=bleu.counts,
-                    sources=sources,
-                    translations=translations,
-                )
+            result = Result(
+                model=model_name,
+                n_shot=n_shot,
+                prompt_example=prompt_example,
+                bleu=bleu.score,
+                bleu_components=bleu.counts,
+                sources=sources,
+                translations=translations,
             )
+            print(result["bleu"], result["bleu_components"])
+            add_result(result)
         del model
         del tokenizer
