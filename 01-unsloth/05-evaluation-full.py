@@ -199,8 +199,11 @@ def add_result(result: Result):
 
 
 def get_results() -> Results:
-    with results_path.open("r") as fp:
-        return json.load(fp)
+    try:
+        with results_path.open("r") as fp:
+            return json.load(fp)
+    except FileNotFoundError:
+        return []
 
 
 def save_results(results):
