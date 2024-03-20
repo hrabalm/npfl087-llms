@@ -137,8 +137,8 @@ def evaluate(model, tokenizer, n_shot: int = 0):
 def mistral_16b_factory():
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    model = AutoModelForCausalLM("mistralai/Mistral-7B-v0.1")
-    tokenizer = AutoTokenizer("mistralai/Mistral-7B-v0.1")
+    model = AutoModelForCausalLM.from_pretrained("mistralai/Mistral-7B-v0.1")
+    tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-v0.1")
     return model, tokenizer
 
 
