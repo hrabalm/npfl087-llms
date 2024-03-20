@@ -131,7 +131,7 @@ def evaluate(model, tokenizer, n_shot: int = 0):
         target_lang=target_lang,
         source_text="An example sentence.",
     )
-    return BLEU().corpus_score(translations, [references]), example_prompt
+    return BLEU().corpus_score(translations, [references]), example_prompt, sources, translations
 
 
 def mistral_16b_factory():
@@ -143,6 +143,7 @@ def mistral_16b_factory():
 
 
 def mistral_bnb_4bit():
+    from unsloth import FastLanguageModel
     model, tokenizer = FastLanguageModel.from_pretrained(
         model_name="unsloth/mistral-7b-bnb-4bit",
         max_seq_length=4096,
@@ -153,8 +154,9 @@ def mistral_bnb_4bit():
 
 
 def mistral_trained_small():
+    from unsloth import FastLanguageModel
     model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name="outputs/mistral-ft-qlora",
+        model_name="./outputs/mistral-ft-qlora",
         max_seq_length=4096,
         load_in_4bit=True,
     )
@@ -176,6 +178,8 @@ Result = TypedDict(
         "prompt_example": str,
         "bleu": Any,
         "bleu_components": Any,
+        "sources": list[str],
+        "translations": list[str],
     },
 )
 Results = list[Result]
@@ -191,16 +195,6 @@ def add_result(result: Result):
     results = get_results()
 
     results.append(result)
-    results.append(
-        {
-            "model": model_name,
-            "n_shot": n_shot,
-            "prompt_example": prompt_example,
-            "bleu": bleu.score,
-            "bleu_components": bleu.counts,
-        }
-    )
-
     save_results(results)
 
 
@@ -218,7 +212,7 @@ for model_name, model_factory in model_factories:
     if not is_already_evaluated(model_name):
         model, tokenizer = model_factory()
         for n_shot in [0, 5]:
-            bleu, prompt_example = evaluate(model, tokenizer, n_shot=n_shot)
+            bleu, prompt_example, sources, translations = evaluate(model, tokenizer, n_shot=n_shot)
             add_result(
                 Result(
                     model=model_name,
@@ -226,6 +220,8 @@ for model_name, model_factory in model_factories:
                     prompt_example=prompt_example,
                     bleu=bleu.score,
                     bleu_components=bleu.counts,
+                    sources=sources,
+                    translations=translations,
                 )
             )
         del model

@@ -1,5 +1,9 @@
 #!/bin/bash
-#FIXME PBS...
+#PBS -N llm_demo_evaluation_full
+#PBS -q gpu
+#PBS -l select=1:ncpus=1:mem=8gb:scratch_local=16gb:ngpus=1:cl_adan=True
+#PBS -l walltime=24:00:00
+#PBS -m ae
 
 echo ${PBS_O_LOGNAME:?This script must be run under PBS scheduling system, execute: qsub $0}
 
