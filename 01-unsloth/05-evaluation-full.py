@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from typing import Any, TypedDict
+from collections import defaultdict
 
 import sacrebleu.utils
 import torch
@@ -88,11 +89,40 @@ class EosListStoppingCriteria(StoppingCriteria):
     def __init__(self, eos_sequence=[13]):  # Stop on newline
         self.eos_sequence = eos_sequence
 
+        # we keep track of which sequences are finished
+        self.sequence_finished = defaultdict(lambda: False)
+        self.sequence_end = defaultdict(lambda: -1)
+
     def __call__(
         self, input_ids: torch.LongTensor, scores: torch.FloatTensor, **kwargs
     ) -> bool:
         last_ids = input_ids[:, -len(self.eos_sequence) :].tolist()
-        return self.eos_sequence in last_ids
+        # print(last_ids, input_ids.shape[1])
+        for i, ids in enumerate(last_ids):
+            if self.eos_sequence == ids:
+                self.sequence_finished[i] = True
+                self.sequence_end[i] = input_ids.shape[1]
+
+        # the batch is finished if all sequences are finished (have non -1 end)
+        # print(f"{self.sequence_finished.values()=}")
+        # print(f"{self.sequence_end=}")
+        return len(self.sequence_end) == input_ids.shape[0]
+
+def filter_outputs(outputs, eos_sequence):
+    """Remove the tokens after the first eos_sequence (including eos_sequence)."""
+    eos_sequence = torch.LongTensor(eos_sequence).to("cuda")
+    length = eos_sequence.shape[0]
+    results = []
+    for sequence in outputs:
+        for idx in range(0, len(sequence) - length + 1):
+            # print(sequence[idx : idx + length], eos_sequence)
+            if torch.equal(sequence[idx : idx + length], eos_sequence):
+                print(sequence[: idx + length])
+                print(sequence[: idx])
+                results.append(sequence[: idx + length])
+                break
+        outputs.append(sequence)
+    return results
 
 
 def translate(
@@ -110,46 +140,87 @@ def translate(
         for source_text in source_texts
     ]
 
-    prompts_tokenized_reordered = [(len(tokenizer(prompt, return_tensors="pt")), idx, prompt) for idx, prompt in enumerate(prompts)]
+    print(tokenizer(prompts[0], return_tensors="pt"))
+    prompts_reordered = [(tokenizer(prompt, return_tensors="pt").input_ids.shape[1], idx, prompt) for idx, prompt in enumerate(prompts)]
+    # print(prompts_reordered)
 
     translations_by_idx = {}
-    for batch in tqdm(partition_all(batch_size, prompts_tokenized_reordered)):
+    for batch in tqdm(list(partition_all(batch_size, prompts_reordered))):
         # maybe we could just try hf pipeline again and rewrite stopping criteria
         # so that it stops when all sequences are finished
         # we then have to cut extra characters from the end by ourselves
 
         # TODO: stopping criteria needs to be changed probably:
         # see this: https://discuss.huggingface.co/t/stopping-criteria-for-batch/26564/7
-        inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=False).to("cuda")
+        tokenizer.pad_token = tokenizer.eos_token
+        inputs = tokenizer(
+            [prompt for _, _, prompt in batch],
+            return_tensors="pt",
+            padding=True,
+            truncation=False,
+        ).to("cuda")
         outputs = model.generate(
             **inputs,
             max_new_tokens=256,
             use_cache=True,
-            stopping_criteria=[EosListStoppingCriteria()]
+            stopping_criteria=[EosListStoppingCriteria()],
+            pad_token_id=tokenizer.pad_token_id,
         )
-        for _, idx, prompt in batch:
-            # TODO: actual batching - either we have to take care of
-            # padding by ourselves or we use the tokenizer again?
-            inputs = prompt.to("cuda")
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=256,
-                use_cache=True,
-                stopping_criteria=[EosListStoppingCriteria()]
-            )
-            decoded = tokenizer.decode(
-                outputs[0][inputs.input_ids.shape[1] :], skip_special_tokens=True
-            ).strip()
-            translations_by_idx[idx] = decoded
+
+        print(outputs)
+
+        # Remove leading prompts
+        outputs = [output[inputs.input_ids.shape[1] :] for output in outputs]
+
+        print(outputs)
+
+        # Remove tokens after stopping criteria
+        outputs = filter_outputs(outputs, tokenizer.eos_token_id)
+
+        print(outputs)
+
+        decoded = [tokenizer.decode(output, skip_special_tokens=True).strip() for output in outputs]
+        for translation, (_length, idx, _prompt) in zip(decoded, batch):
+            translations_by_idx[idx] = translation
+
+        # for _, idx, prompt in batch:
+        #     # TODO: actual batching - either we have to take care of
+        #     # padding by ourselves or we use the tokenizer again?
+        #     inputs = prompt.to("cuda")
+        #     outputs = model.generate(
+        #         **inputs,
+        #         max_new_tokens=256,
+        #         use_cache=True,
+        #         stopping_criteria=[EosListStoppingCriteria()],
+        #         pad_token_id=tokenizer.pad_token_id,
+        #     )
+        #     decoded = tokenizer.decode(
+        #         outputs[0][inputs.input_ids.shape[1] :], skip_special_tokens=True
+        #     ).strip()
+        #     translations_by_idx[idx] = decoded
+
+
+        #     tqdm.write(f"\"{decoded}\"")
 
     translations = [translation for _, translation in sorted(list(translations_by_idx.items()))]
+    print(translations)
     return translations
 
 
 def evaluate(model, tokenizer, n_shot: int = 0):
+    # TODO: remove this, only for mini benchmark purposes
+    global sources, references
+    sources = sources[:10]
+    references = references[:10]
+
+    # translations = translate(
+    #     model, tokenizer, source_lang, target_lang, sources, n_shot=n_shot
+    # )
+
     translations = translate(
-        model, tokenizer, source_lang, target_lang, sources, n_shot=n_shot
+        model, tokenizer, source_lang, target_lang, sources, n_shot=n_shot, batch_size=10
     )
+
     example_prompt = apply_prompt_n_shot(
         EXAMPLE_SENTENCES,
         n_shot,
@@ -178,7 +249,7 @@ def mistral_16b_factory():
         device_map="auto",
         torch_dtype=torch.float16,
     )
-    tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-v0.1")
+    tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-v0.1", padding_side="left")
     return model, tokenizer
 
 
