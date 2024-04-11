@@ -32,7 +32,7 @@ bash Miniforge3-$(uname)-$(uname -m).sh
 ### Create a conda prefix and install the necessary packages
 
 ```bash
-TMPDIR="$SCRATCHDIR" ~/miniforge3/bin/mamba create --prefix=~/envs/unsloth pytorch cuda-nvcc=12.1 torchvision torchaudio pytorch-cuda=12.1 xformers -c pytorch -c nvidia -c xformers
+TMPDIR="$SCRATCHDIR" ~/miniforge3/bin/mamba create --prefix=~/envs/unsloth pytorch cuda-nvcc=12.1 torchvision torchaudio pytorch-cuda=12.1 xformers::xformers -c pytorch -c nvidia
 ```
 
 ### Install pip packages and unsloth
